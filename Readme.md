@@ -2,17 +2,35 @@
 
 ## 使用说明
 
+### 安装
+
+```bash
+apt update && apt install -y pip p7zip-full sqlite3
+pip install -r requirements.txt
+```
+
 ### 启动服务
 
-解压 `country_asn.7z` 得到 `country_asn.csv`
-
-`python app.py`
+```bash
+# 解压 country_asn.7z 得到 country_asn.csv
+7z x country_asn.7z
+# 初始化数据库
+python3 initdb.py
+# 启动服务python
+python3 app.py
+#或者
+gunicorn -w 1 -b 0.0.0.0:5000 --timeout 120 app:app
+```
 
 ### 查询
 
-`curl http://127.0.0.1:5000/ip_full_info/8.8.8.8`
+```bash
+curl http://127.0.0.1:5000/ip_full_info/8.8.8.8
+curl http://127.0.0.1:5000/ip_country/8.8.8.8
+curl http://127.0.0.1:5000/ip_full_info/240e:38b::11fa
+```
 
-`curl http://127.0.0.1:5000/ip_country/8.8.8.8`
+
 
 ### 路由节点
 

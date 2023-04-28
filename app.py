@@ -1,63 +1,124 @@
-import csv
 import json
 import ipaddress
-from flask import Flask
+import sqlite3
+from flask import Flask, request
 
 app = Flask(__name__)
 
-# 读取CSV文件到内存
-data = []
-with open('country_asn.csv', 'r', encoding='utf-8') as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        row['start_ip'] = ipaddress.ip_address(row['start_ip'])
-        row['end_ip'] = ipaddress.ip_address(row['end_ip'])
-        data.append(row)
+# 连接SQLite数据库
+conn = sqlite3.connect('country_asn.db', check_same_thread=False)
+conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
 
 def find_ip_info(ip_address_str):
+    conn = sqlite3.connect('country_asn.db')
+    cursor = conn.cursor()
+
+    # Convert the IP address to a hexadecimal string
     ip_address = ipaddress.ip_address(ip_address_str)
-    result = {}
-    for row in data:
-        if row['start_ip'].version == ip_address.version and row['start_ip'] <= ip_address <= row['end_ip']:
-            result['ip_address'] = str(ip_address)
-            result['country'] = row['country']
-            result['country_name'] = row['country_name']
-            result['continent'] = row['continent']
-            result['continent_name'] = row['continent_name']
-            result['asn'] = row['asn']
-            result['as_name'] = row['as_name']
-            result['as_domain'] = row['as_domain']
-            break
-    return result
+    if ip_address.version == 4:
+        ip_hex_str = format(int(ip_address), '08x')  # Pad to 8 characters for IPv4
+        query = """
+            SELECT * FROM ip_info
+            WHERE LENGTH(start_ip) = 8 AND LENGTH(end_ip) = 8
+            AND start_ip <= ? AND end_ip >= ?
+        """
+    else:
+        ip_hex_str = format(int(ip_address), '032x')  # Pad to 32 characters for IPv6
+        query = """
+            SELECT * FROM ip_info
+            WHERE LENGTH(start_ip) = 32 AND LENGTH(end_ip) = 32
+            AND start_ip <= ? AND end_ip >= ?
+        """
 
-@app.route('/ip_country/<ip_address_str>')
-def ip_country(ip_address_str):
-    result = find_ip_info(ip_address_str)
-    return json.dumps({k: result[k] for k in result if k == 'ip_address' or k == 'country'})
+    # Execute the SQL query and fetch the matching records
+    cursor.execute(query, (ip_hex_str, ip_hex_str))
+    rows = cursor.fetchall()
 
-@app.route('/ip_country_name/<ip_address_str>')
-def ip_country_name(ip_address_str):
-    result = find_ip_info(ip_address_str)
-    return json.dumps({k: result[k] for k in result if k == 'ip_address' or k == 'country_name'})
+    # If a matching record is found, return it as a dictionary
+    if rows:
+        row = rows[0]
+        result = {
+            'ip_address': ip_address_str,
+            # 'ip_hex': ip_hex_str,
+            # 'start': row[1],
+            # 'end': row[2],
+            'country': row[3],
+            'country_name': row[4],
+            'continent': row[5],
+            'continent_name': row[6],
+            'asn': row[7],
+            'as_name': row[8],
+            'as_domain': row[9]
+        }
+        return result
 
-@app.route('/ip_continent/<ip_address_str>')
-def ip_continent(ip_address_str):
-    result = find_ip_info(ip_address_str)
-    return json.dumps({k: result[k] for k in result if k == 'ip_address' or k == 'continent'})
+    # If no matching record is found, return an empty dictionary
+    return {}
 
-@app.route('/ip_continent_name/<ip_address_str>')
-def ip_continent_name(ip_address_str):
-    result = find_ip_info(ip_address_str)
-    return json.dumps({k: result[k] for k in result if k == 'ip_address' or k == 'continent_name'})
 
-@app.route('/ip_asn_info/<ip_address_str>')
-def ip_asn_info(ip_address_str):
-    result = find_ip_info(ip_address_str)
-    return json.dumps({k: result[k] for k in result if k == 'ip_address' or k == 'asn' or k == 'as_name' or k == 'as_domain'})
 
-@app.route('/ip_full_info/<ip_address_str>')
-def ip_full_info(ip_address_str):
-    result = find_ip_info(ip_address_str)
+
+@app.route('/ip_info/<ip_address>')
+def ip_info(ip_address):
+    result = find_ip_info(ip_address)
+    return json.dumps(result)
+
+@app.route('/ip_country/<ip_address>')
+def ip_country(ip_address):
+    result = find_ip_info(ip_address)
+    if result:
+        result = {
+            'ip_address': ip_address,
+            'country': result['country']
+        }
+    return json.dumps(result)
+
+@app.route('/ip_country_name/<ip_address>')
+def ip_country_name(ip_address):
+    result = find_ip_info(ip_address)
+    if result:
+        result = {
+            'ip_address': ip_address,
+            'country_name': result['country_name']
+        }
+    return json.dumps(result)
+
+@app.route('/ip_continent/<ip_address>')
+def ip_continent(ip_address):
+    result = find_ip_info(ip_address)
+    if result:
+        result = {
+            'ip_address': ip_address,
+            'continent': result['continent']
+        }
+    return json.dumps(result)
+
+@app.route('/ip_continent_name/<ip_address>')
+def ip_continent_name(ip_address):
+    result = find_ip_info(ip_address)
+    if result:
+        result = {
+            'ip_address': ip_address,
+            'continent_name': result['continent_name']
+        }
+    return json.dumps(result)
+
+@app.route('/ip_asn_info/<ip_address>')
+def ip_asn_info(ip_address):
+    result = find_ip_info(ip_address)
+    if result:
+        result = {
+            'ip_address': ip_address,
+            'asn': result['asn'],
+            'as_name': result['as_name'],
+            'as_domain': result['as_domain']
+        }
+    return json.dumps(result)
+
+@app.route('/ip_full_info/<ip_address>')
+def ip_full_info(ip_address):
+    result = find_ip_info(ip_address)
     return json.dumps(result)
 
 if __name__ == '__main__':
